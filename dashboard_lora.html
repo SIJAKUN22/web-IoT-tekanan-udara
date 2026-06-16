@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Air Pressure Monitoring System</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;900&family=Space+Grotesk:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  :root{
+    --bg-primary:#0B1220;
+    --bg-secondary:#101A2E;
+    --bg-card:rgba(16,26,46,0.85);
+    --cyan:#00E5FF;
+    --blue:#3B82F6;
+    --text-primary:#FFFFFF;
+    --text-secondary:#AAB4C5;
+    --text-muted:#5A6A80;
+    --border:rgba(0,229,255,0.12);
+    --border-hover:rgba(0,229,255,0.3);
+    --glass:rgba(255,255,255,0.03);
+    --green:#00FF9C;
+    --red:#FF3B5C;
+    --amber:#FFB800;
+  }
+  html,body{background:var(--bg-primary);color:var(--text-primary);font-family:'Space Grotesk',sans-serif;min-height:100%;overflow-x:hidden}
+  
+  /* Particles */
+  #particles-canvas{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0;opacity:0.4}
+  
+  .app{position:relative;z-index:1;min-height:100vh;padding:0 0 40px}
+  
+  /* Header */
+  header{
+    background:rgba(11,18,32,0.95);
+    border-bottom:1px solid var(--border);
+    padding:16px 28px;
+    display:flex;align-items:center;justify-content:space-between;
+    position:sticky;top:0;z-index:100;
+    backdrop-filter:blur(20px);
+  }
+  .logo-area{display:flex;align-items:center;gap:14px}
+  .logo-icon{
+    width:42px;height:42px;border-radius:10px;
+    background:linear-gradient(135deg,rgba(0,229,255,0.15),rgba(59,130,246,0.15));
+    border:1px solid rgba(0,229,255,0.3);
+    display:flex;align-items:center;justify-content:center;
+    position:relative;overflow:hidden;
+  }
+  .logo-icon::before{
+    content:'';position:absolute;inset:0;
+    background:linear-gradient(135deg,rgba(0,229,255,0.1),transparent);
+  }
+  .logo-icon svg{width:22px;height:22px;color:var(--cyan)}
+  .header-title{font-family:'Orbitron',monospace;font-size:14px;font-weight:600;color:var(--text-primary);letter-spacing:0.05em}
+  .header-sub{font-size:11px;color:var(--text-muted);font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;margin-top:2px}
+  .header-right{display:flex;align-items:center;gap:20px}
+  .conn-badge{display:flex;align-items:center;gap:7px;font-size:12px;font-family:'JetBrains Mono',monospace}
+  .conn-dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green),0 0 16px rgba(0,255,156,0.4);animation:pulse-dot 2s ease-in-out infinite}
+  .conn-dot.offline{background:var(--red);box-shadow:0 0 8px var(--red),0 0 16px rgba(255,59,92,0.4);animation:none}
+  @keyframes pulse-dot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.7;transform:scale(0.85)}}
+  .live-tag{background:rgba(0,229,255,0.08);border:1px solid rgba(0,229,255,0.2);border-radius:4px;padding:3px 8px;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--cyan);letter-spacing:0.08em}
+  
+  /* Layout */
+  .main{padding:24px 28px}
+  .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px}
+  .grid-chart{display:grid;grid-template-columns:1fr 340px;gap:16px;margin-bottom:20px}
+  .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px}
+  
+  @media(max-width:1100px){.grid-4{grid-template-columns:repeat(2,1fr)}.grid-chart{grid-template-columns:1fr}}
+  @media(max-width:700px){.grid-4{grid-template-columns:1fr}.grid-3{grid-template-columns:1fr}.grid-chart{grid-template-columns:1fr}}
+  
+  /* Card */
+  .card{
+    background:var(--bg-card);
+    border:1px solid var(--border);
+    border-radius:16px;
+    padding:22px;
+    position:relative;
+    overflow:hidden;
+    transition:border-color 0.3s,transform 0.2s;
+    backdrop-filter:blur(16px);
+  }
+  .card::before{
+    content:'';position:absolute;inset:0;border-radius:16px;
+    background:var(--glass);pointer-events:none;
+  }
+  .card:hover{border-color:var(--border-hover);transform:translateY(-1px)}
+  .card-glow-cyan::after{content:'';position:absolute;top:-60px;right:-60px;width:180px;height:180px;border-radius:50%;background:radial-gradient(circle,rgba(0,229,255,0.08) 0%,transparent 70%);pointer-events:none}
+  .card-glow-blue::after{content:'';position:absolute;top:-60px;right:-60px;width:180px;height:180px;border-radius:50%;background:radial-gradient(circle,rgba(59,130,246,0.08) 0%,transparent 70%);pointer-events:none}
+  .card-label{font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--text-muted);letter-spacing:0.12em;text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;gap:6px}
+  .card-label-dot{width:5px;height:5px;border-radius:50%;background:var(--cyan)}
+  
+  /* Primary pressure card */
+  .card-primary{background:linear-gradient(135deg,rgba(16,26,46,0.9) 0%,rgba(11,18,32,0.95) 100%);border-color:rgba(0,229,255,0.2);grid-column:span 2}
+  @media(max-width:700px){.card-primary{grid-column:span 1}}
+  .pressure-value{font-family:'Orbitron',monospace;font-size:52px;font-weight:700;color:var(--text-primary);line-height:1;letter-spacing:-0.02em;transition:all 0.4s}
+  .pressure-unit{font-family:'Orbitron',monospace;font-size:18px;font-weight:400;color:var(--cyan);margin-left:8px;vertical-align:middle}
+  .trend-badge{display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:20px;font-size:12px;font-family:'JetBrains Mono',monospace;margin-top:12px}
+  .trend-stable{background:rgba(0,229,255,0.08);border:1px solid rgba(0,229,255,0.2);color:var(--cyan)}
+  .trend-rising{background:rgba(0,255,156,0.08);border:1px solid rgba(0,255,156,0.2);color:var(--green)}
+  .trend-falling{background:rgba(255,59,92,0.08);border:1px solid rgba(255,59,92,0.2);color:var(--red)}
+  .pressure-bar-wrap{margin-top:18px;height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden}
+  .pressure-bar{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--blue),var(--cyan));transition:width 0.5s ease;width:0%}
+  .pressure-range{display:flex;justify-content:space-between;margin-top:4px;font-size:10px;color:var(--text-muted);font-family:'JetBrains Mono',monospace}
+  .pressure-grid-accent{position:absolute;bottom:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--cyan),transparent);opacity:0.3}
+  
+  /* Temperature card */
+  .temp-value{font-family:'Orbitron',monospace;font-size:40px;font-weight:600;color:var(--text-primary);line-height:1}
+  .temp-unit{font-family:'Orbitron',monospace;font-size:16px;color:var(--amber)}
+  .temp-sparkline{margin-top:16px;height:36px;position:relative}
+  
+  /* LoRa card */
+  .lora-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04)}
+  .lora-row:last-child{border-bottom:none}
+  .lora-key{font-size:11px;color:var(--text-muted);font-family:'JetBrains Mono',monospace}
+  .lora-val{font-size:12px;color:var(--text-secondary);font-family:'JetBrains Mono',monospace;font-weight:500}
+  .lora-val.highlight{color:var(--cyan)}
+  
+  /* ESP32 card */
+  .status-chip{display:inline-flex;align-items:center;gap:6px;background:rgba(0,255,156,0.08);border:1px solid rgba(0,255,156,0.2);border-radius:6px;padding:5px 10px;font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--green);margin-bottom:16px}
+  .esp-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-size:12px}
+  .esp-key{color:var(--text-muted);font-family:'JetBrains Mono',monospace;font-size:11px}
+  .esp-val{color:var(--text-secondary);font-family:'JetBrains Mono',monospace;font-weight:500}
+  
+  /* Chart card */
+  .chart-title{font-family:'Orbitron',monospace;font-size:13px;font-weight:500;color:var(--text-primary);letter-spacing:0.05em;margin-bottom:6px}
+  .chart-meta{display:flex;align-items:center;gap:12px;margin-bottom:20px}
+  .chart-badge{font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--text-muted);padding:3px 7px;background:rgba(255,255,255,0.04);border-radius:4px}
+  .chart-wrap{position:relative;width:100%;height:240px}
+  
+  /* Device architecture */
+  .arch-chain{display:flex;align-items:center;gap:0;margin-top:8px}
+  .arch-node{flex:1;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:14px 10px;text-align:center;transition:border-color 0.3s,transform 0.2s;cursor:default;position:relative}
+  .arch-node:hover{border-color:var(--border-hover);transform:scale(1.03)}
+  .arch-node-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;margin:0 auto 8px;border:1px solid rgba(0,229,255,0.2);background:rgba(0,229,255,0.06)}
+  .arch-node-icon svg{width:16px;height:16px;color:var(--cyan)}
+  .arch-node-name{font-size:10px;font-family:'Orbitron',monospace;color:var(--text-primary);font-weight:500;letter-spacing:0.04em}
+  .arch-node-sub{font-size:9px;color:var(--text-muted);font-family:'JetBrains Mono',monospace;margin-top:3px}
+  .arch-arrow{flex:0 0 28px;text-align:center;color:var(--cyan);font-size:12px;opacity:0.5;display:flex;align-items:center;justify-content:center}
+  .arch-dot{width:5px;height:5px;border-radius:50%;background:var(--green);position:absolute;top:8px;right:8px;box-shadow:0 0 6px var(--green)}
+  
+  /* Section header */
+  .section-head{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+  .section-title{font-family:'Orbitron',monospace;font-size:12px;font-weight:500;color:var(--text-secondary);letter-spacing:0.1em;text-transform:uppercase}
+  .section-line{flex:1;height:1px;background:linear-gradient(90deg,var(--border),transparent)}
+  
+  /* Table */
+  .table-bar{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+  .table-search{background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text-primary);font-size:12px;font-family:'Space Grotesk',sans-serif;outline:none;width:200px;transition:border-color 0.2s}
+  .table-search:focus{border-color:rgba(0,229,255,0.35)}
+  .table-search::placeholder{color:var(--text-muted)}
+  .table-btn{background:rgba(0,229,255,0.06);border:1px solid rgba(0,229,255,0.15);border-radius:6px;padding:7px 12px;color:var(--cyan);font-size:11px;font-family:'JetBrains Mono',monospace;cursor:pointer;transition:all 0.2s;white-space:nowrap}
+  .table-btn:hover{background:rgba(0,229,255,0.12);border-color:rgba(0,229,255,0.35)}
+  .tbl-wrap{overflow-x:auto;border-radius:10px;border:1px solid var(--border)}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  thead th{background:rgba(0,229,255,0.04);color:var(--text-muted);font-size:10px;font-family:'JetBrains Mono',monospace;text-transform:uppercase;letter-spacing:0.08em;padding:10px 14px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none;transition:color 0.2s}
+  thead th:hover{color:var(--cyan)}
+  tbody tr{border-bottom:1px solid rgba(255,255,255,0.03);transition:background 0.15s}
+  tbody tr:last-child{border-bottom:none}
+  tbody tr:hover{background:rgba(0,229,255,0.03)}
+  td{padding:10px 14px;color:var(--text-secondary);font-family:'JetBrains Mono',monospace;font-size:11px;white-space:nowrap}
+  td.val{color:var(--text-primary);font-weight:500}
+  .status-ok{display:inline-flex;align-items:center;gap:4px;color:var(--green);font-size:10px}
+  .status-ok::before{content:'';width:5px;height:5px;border-radius:50%;background:var(--green)}
+  .status-warn{display:inline-flex;align-items:center;gap:4px;color:var(--amber);font-size:10px}
+  .status-warn::before{content:'';width:5px;height:5px;border-radius:50%;background:var(--amber)}
+  .tbl-pager{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;font-size:11px;color:var(--text-muted);font-family:'JetBrains Mono',monospace;border-top:1px solid var(--border)}
+  .pg-btn{background:none;border:1px solid var(--border);border-radius:4px;color:var(--text-muted);padding:3px 8px;cursor:pointer;font-size:10px;font-family:'JetBrains Mono',monospace;transition:all 0.2s}
+  .pg-btn:hover{border-color:rgba(0,229,255,0.3);color:var(--cyan)}
+  
+  /* Scrollbar */
+  ::-webkit-scrollbar{width:4px;height:4px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:rgba(0,229,255,0.2);border-radius:2px}
+</style>
+</head>
+<body>
+<canvas id="particles-canvas"></canvas>
+
+<div class="app">
+<header>
+  <div class="logo-area">
+    <div class="logo-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+        <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="9" stroke-dasharray="4 2"/>
+      </svg>
+    </div>
+    <div>
+      <div class="header-title">Air Pressure Monitoring System</div>
+      <div class="header-sub">BMP388 · ESP32 · LoRa E220-900T22D</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="live-tag">● LIVE</div>
+    <div class="conn-badge">
+      <div class="conn-dot offline" id="conn-dot"></div>
+      <span id="conn-text" style="color:var(--red)">Offline</span>
+    </div>
+    <div style="font-size:11px;color:var(--text-muted);font-family:'JetBrains Mono',monospace" id="header-time">--:--:--</div>
+  </div>
+</header>
+
+<div class="main">
+
+<div class="grid-4">
+
+  <div class="card card-primary card-glow-cyan" style="grid-column:span 2">
+    <div class="card-label"><span class="card-label-dot"></span>Air Pressure · BMP388</div>
+    <div>
+      <span class="pressure-value" id="pressure-val">0.00</span><span class="pressure-unit">hPa</span>
+    </div>
+    <div id="trend-badge" class="trend-badge trend-stable">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7" id="trend-icon-path"/></svg>
+      <span id="trend-text">Waiting Data...</span>
+    </div>
+    <div class="pressure-bar-wrap" style="margin-top:14px">
+      <div class="pressure-bar" id="pressure-bar"></div>
+    </div>
+    <div class="pressure-range">
+      <span>980 hPa</span>
+      <span id="pressure-midlabel">-- hPa</span>
+      <span>1050 hPa</span>
+    </div>
+    <div class="pressure-grid-accent"></div>
+  </div>
+
+  <div class="card card-glow-blue">
+    <div class="card-label"><span class="card-label-dot" style="background:var(--amber)"></span>Temperature</div>
+    <div>
+      <span class="temp-value" id="temp-val">0.0</span><span class="temp-unit"> °C</span>
+    </div>
+    <div style="margin-top:8px;font-size:11px;color:var(--text-muted);font-family:'JetBrains Mono',monospace">Real-time telemetry</div>
+    <div class="temp-sparkline">
+      <canvas id="sparkline-temp" height="36"></canvas>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-label"><span class="card-label-dot" style="background:var(--green)"></span>System Status</div>
+    <div class="status-chip" id="device-status">
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+      Connecting...
+    </div>
+    <div class="esp-row"><span class="esp-key">Uptime</span><span class="esp-val" id="esp-uptime">00:00:00</span></div>
+    <div class="esp-row"><span class="esp-key">Last Update</span><span class="esp-val" id="esp-lastupd">--:--:--</span></div>
+    <div class="esp-row"><span class="esp-key">System Info</span><span class="esp-val">Active</span></div>
+  </div>
+
+</div>
+
+<div class="grid-chart">
+
+  <div class="card">
+    <div class="chart-title">Pressure Trend</div>
+    <div class="chart-meta">
+      <div class="chart-badge" id="chart-range-label">Last 60 s</div>
+      <div class="chart-badge">Live Update</div>
+      <div class="chart-badge" id="chart-avg-badge">Avg: — hPa</div>
+    </div>
+    <div class="chart-wrap"><canvas id="pressure-chart"></canvas></div>
+    <div style="display:flex;gap:6px;margin-top:12px">
+      <button class="table-btn" onclick="setRange(60)" id="btn60" style="background:rgba(0,229,255,0.15)">1 min</button>
+      <button class="table-btn" onclick="setRange(300)" id="btn300">5 min</button>
+      <button class="table-btn" onclick="setRange(600)" id="btn600">10 min</button>
+    </div>
+  </div>
+
+  <div class="card card-glow-blue" style="display:flex;flex-direction:column">
+    <div class="card-label"><span class="card-label-dot" style="background:var(--blue)"></span>LoRa · E220-900T22D</div>
+    
+    <div class="lora-row" style="margin-top:10px"><span class="lora-key">Status</span><span class="lora-val highlight">Ready</span></div>
+    <div class="lora-row"><span class="lora-key">Frequency</span><span class="lora-val">900 MHz</span></div>
+    <div class="lora-row"><span class="lora-key">Packets RX</span><span class="lora-val highlight" id="lora-pkt">0</span></div>
+    <div class="lora-row"><span class="lora-key">Last RX</span><span class="lora-val" id="lora-last">--:--:--</span></div>
+    <div class="lora-row"><span class="lora-key">Tx Power</span><span class="lora-val">22 dBm</span></div>
+  </div>
+
+</div>
+
+<div class="card" style="margin-bottom:20px">
+  <div class="section-head">
+    <span class="section-title">System Architecture</span>
+    <div class="section-line"></div>
+  </div>
+  <div class="arch-chain">
+    <div class="arch-node">
+      <div class="arch-dot"></div>
+      <div class="arch-node-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M3 12a9 9 0 109 9"/><path d="M12 8v4l3 3"/></svg>
+      </div>
+      <div class="arch-node-name">BMP388</div>
+      <div class="arch-node-sub">Pressure Sensor</div>
+      <div class="arch-node-sub">SPI</div>
+    </div>
+    <div class="arch-arrow">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+    </div>
+    <div class="arch-node">
+      <div class="arch-dot"></div>
+      <div class="arch-node-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="6" width="16" height="12" rx="2"/><path d="M8 6V4M16 6V4M8 18v2M16 18v2"/></svg>
+      </div>
+      <div class="arch-node-name">ESP32 TX</div>
+      <div class="arch-node-sub">Microcontroller</div>
+      <div class="arch-node-sub">Field Node</div>
+    </div>
+    <div class="arch-arrow">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+    </div>
+    <div class="arch-node">
+      <div class="arch-dot"></div>
+      <div class="arch-node-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 7h2m14 0h2M7 3v2m0 14v2M17 3v2m0 14v2"/><rect x="7" y="7" width="10" height="10" rx="1"/><circle cx="12" cy="12" r="2"/></svg>
+      </div>
+      <div class="arch-node-name">E220-900</div>
+      <div class="arch-node-sub">LoRa Module</div>
+      <div class="arch-node-sub">UART · 22 dBm</div>
+    </div>
+    <div class="arch-arrow">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+    </div>
+    <div class="arch-node">
+      <div class="arch-dot"></div>
+      <div class="arch-node-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 12.55a11 11 0 0114.08 0"/><path d="M1.42 9a16 16 0 0121.16 0"/><path d="M8.53 16.11a6 6 0 016.95 0"/><circle cx="12" cy="20" r="1" fill="currentColor"/></svg>
+      </div>
+      <div class="arch-node-name">ESP32 RX</div>
+      <div class="arch-node-sub">Gateway WiFi</div>
+      <div class="arch-node-sub">MQTT Bridge</div>
+    </div>
+    <div class="arch-arrow">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+    </div>
+    <div class="arch-node">
+      <div class="arch-dot"></div>
+      <div class="arch-node-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+      </div>
+      <div class="arch-node-name">Dashboard</div>
+      <div class="arch-node-sub">Web Interface</div>
+      <div class="arch-node-sub">HiveMQ</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="section-head">
+    <span class="section-title">Historical Data</span>
+    <div class="section-line"></div>
+  </div>
+  <div class="table-bar">
+    <input class="table-search" id="tbl-search" placeholder="Search timestamp..." oninput="filterTable()" type="text">
+    <input type="date" id="tbl-date" class="table-search" style="width:150px" oninput="filterTable()">
+    <button class="table-btn" onclick="exportCSV()">↓ Export CSV</button>
+    <div style="margin-left:auto;font-size:11px;color:var(--text-muted);font-family:'JetBrains Mono',monospace" id="tbl-count">0 rows</div>
+  </div>
+  <div class="tbl-wrap">
+    <table id="data-table">
+      <thead>
+        <tr>
+          <th onclick="sortTable(0)">Timestamp ↕</th>
+          <th onclick="sortTable(1)">Pressure (hPa) ↕</th>
+          <th onclick="sortTable(2)">Temp (°C) ↕</th>
+          <th onclick="sortTable(3)">Status ↕</th>
+        </tr>
+      </thead>
+      <tbody id="tbl-body"></tbody>
+    </table>
+    <div class="tbl-pager">
+      <button class="pg-btn" onclick="prevPage()">← Prev</button>
+      <span id="page-info">Page 1 / 1</span>
+      <button class="pg-btn" onclick="nextPage()">Next →</button>
+    </div>
+  </div>
+</div>
+
+</div>
+</div>
+
+<script>
+// ─── Particles Background ──────────────────────────────────────────
+const canvas=document.getElementById('particles-canvas');
+const ctx=canvas.getContext('2d');
+let particles=[];
+function resizeCanvas(){canvas.width=window.innerWidth;canvas.height=window.innerHeight}
+resizeCanvas();window.addEventListener('resize',resizeCanvas);
+function initParticles(){
+  particles=[];
+  const count=Math.floor((window.innerWidth*window.innerHeight)/18000);
+  for(let i=0;i<count;i++){
+    particles.push({x:Math.random()*canvas.width,y:Math.random()*canvas.height,r:Math.random()*1.2+0.2,vx:(Math.random()-0.5)*0.15,vy:(Math.random()-0.5)*0.15,a:Math.random()*0.5+0.1});
+  }
+}
+initParticles();
+function animParticles(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  particles.forEach(p=>{
+    p.x+=p.vx;p.y+=p.vy;
+    if(p.x<0)p.x=canvas.width;if(p.x>canvas.width)p.x=0;
+    if(p.y<0)p.y=canvas.height;if(p.y>canvas.height)p.y=0;
+    ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+    ctx.fillStyle=`rgba(0,229,255,${p.a})`;ctx.fill();
+  });
+  requestAnimationFrame(animParticles);
+}
+animParticles();
+
+// ─── Variabel Penyimpan Data Asli ──────────────────────────────
+let pressure = 0;
+let temperature = 0;
+let packets = 0;
+let prevPressure = 0;
+
+let pressureHistory = [];
+let timeHistory = [];
+let tempHistory = [];
+
+let startTime = Date.now();
+let maxPoints = 60; 
+let rangeSeconds = 60;
+let trend = 'stable';
+
+let sortCol = -1; let sortDir = 1;
+let tableData = []; let filteredData = []; 
+let page = 0; const pageSize = 8;
+
+// ─── Chart Setup ─────────────────────────────────────────────
+const chartCanvas = document.getElementById('pressure-chart');
+const chart = new Chart(chartCanvas,{
+  type:'line',
+  data:{
+    labels: timeHistory,
+    datasets:[{
+      label:'Pressure (hPa)',
+      data: pressureHistory,
+      borderColor:'#00E5FF',
+      borderWidth:1.5,
+      pointRadius:0,
+      tension:0.4,
+      fill:true,
+      backgroundColor:'rgba(0,229,255,0.05)',
+    }]
+  },
+  options:{
+    responsive:true,maintainAspectRatio:false,
+    animation:{duration:400},
+    plugins:{legend:{display:false},tooltip:{
+      backgroundColor:'rgba(16,26,46,0.95)',
+      borderColor:'rgba(0,229,255,0.2)',borderWidth:1,
+      titleColor:'#AAB4C5',bodyColor:'#FFFFFF',
+      titleFont:{family:"'JetBrains Mono',monospace",size:10},
+      bodyFont:{family:"'Orbitron',monospace",size:13},
+      callbacks:{label:c=>`${c.parsed.y.toFixed(2)} hPa`}
+    }},
+    scales:{
+      x:{grid:{color:'rgba(255,255,255,0.03)',drawBorder:false},ticks:{color:'#5A6A80',font:{family:"'JetBrains Mono',monospace",size:9},maxTicksLimit:8,maxRotation:0},border:{display:false}},
+      y:{grid:{color:'rgba(255,255,255,0.03)',drawBorder:false},ticks:{color:'#5A6A80',font:{family:"'JetBrains Mono',monospace",size:9},callback:v=>v.toFixed(1)},border:{display:false},suggestedMin:980,suggestedMax:1050}
+    }
+  }
+});
+
+// Sparkline Setup
+const sparkCanvas=document.getElementById('sparkline-temp');
+const sparkCtx=sparkCanvas.getContext('2d');
+function drawSparkline(){
+  if(tempHistory.length === 0) return;
+  sparkCanvas.width=sparkCanvas.offsetWidth*2;sparkCanvas.height=36*2;
+  sparkCtx.scale(2,2);
+  const w=sparkCanvas.offsetWidth,h=18;
+  sparkCtx.clearRect(0,0,w,h*2);
+  const min=Math.min(...tempHistory),max=Math.max(...tempHistory),rng=max-min||1;
+  sparkCtx.beginPath();
+  tempHistory.forEach((v,i)=>{
+    const x=(i/(tempHistory.length-1))*w;
+    const y=h-(((v-min)/rng)*h*0.8+h*0.1);
+    i===0?sparkCtx.moveTo(x,y):sparkCtx.lineTo(x,y);
+  });
+  sparkCtx.strokeStyle='#FFB800';sparkCtx.lineWidth=1.2;sparkCtx.stroke();
+}
+
+// ─── Fungsi Tampilan Web (UI) ────────────────────────────────
+function setRange(s){
+  rangeSeconds = s;
+  maxPoints = Math.floor(s/5); // Alat TX mengirim tiap 5 detik
+  ['btn60','btn300','btn600'].forEach(id=>{
+    document.getElementById(id).style.background='rgba(0,229,255,0.06)';
+  });
+  document.getElementById('btn'+s).style.background='rgba(0,229,255,0.15)';
+  document.getElementById('chart-range-label').textContent=s<60?`Last ${s} s`:s===60?'Last 1 min':s===300?'Last 5 min':'Last 10 min';
+}
+
+function updateUI() {
+  if (pressure === 0 && temperature === 0) return; // Jangan update jika data belum masuk
+
+  const diff = pressure - prevPressure;
+  trend = diff > 0.2 ? 'rising' : diff < -0.2 ? 'falling' : 'stable';
+  prevPressure = pressure;
+
+  const now = new Date();
+  const ts = now.toTimeString().slice(0,8);
+
+  // Update Array Grafik
+  pressureHistory.push(parseFloat(pressure.toFixed(2)));
+  timeHistory.push(ts);
+  if(pressureHistory.length > 200) { pressureHistory.shift(); timeHistory.shift(); }
+
+  // Render Grafik
+  const slice = pressureHistory.slice(-maxPoints);
+  const tslice = timeHistory.slice(-maxPoints);
+  chart.data.labels = tslice;
+  chart.data.datasets[0].data = slice;
+  chart.update('none');
+
+  // Update Rata-rata
+  const avg = (slice.reduce((a,b)=>a+b,0)/slice.length).toFixed(2);
+  document.getElementById('chart-avg-badge').textContent = `Avg: ${avg} hPa`;
+
+  // Tampilkan Nilai Asli
+  document.getElementById('pressure-val').textContent = pressure.toFixed(2);
+  document.getElementById('temp-val').textContent = temperature.toFixed(1);
+  document.getElementById('lora-pkt').textContent = packets.toLocaleString();
+  document.getElementById('lora-last').textContent = ts;
+  document.getElementById('esp-lastupd').textContent = ts;
+
+  // Pressure Bar (Range Sensor 980-1050)
+  const pct = ((pressure - 980) / (1050 - 980) * 100).toFixed(1);
+  document.getElementById('pressure-bar').style.width = Math.max(0, Math.min(100, pct)) + '%';
+  document.getElementById('pressure-midlabel').textContent = pressure.toFixed(0) + ' hPa';
+
+  // Badge Status Stabil/Naik/Turun
+  const badge = document.getElementById('trend-badge');
+  const ttext = document.getElementById('trend-text');
+  const tpath = document.getElementById('trend-icon-path');
+  badge.className = 'trend-badge';
+  if(trend === 'rising') { badge.classList.add('trend-rising'); ttext.textContent='Rising'; tpath.setAttribute('d','M5 19L12 5l7 14'); }
+  else if(trend === 'falling') { badge.classList.add('trend-falling'); ttext.textContent='Falling'; tpath.setAttribute('d','M5 5L12 19l7-14'); }
+  else { badge.classList.add('trend-stable'); ttext.textContent='Stable'; tpath.setAttribute('d','M5 12h14M12 5l7 7-7 7'); }
+
+  // Uptime Web
+  const up = Math.floor((Date.now() - startTime) / 1000);
+  const h = String(Math.floor(up / 3600)).padStart(2,'0');
+  const m = String(Math.floor((up % 3600) / 60)).padStart(2,'0');
+  const sc = String(up % 60).padStart(2,'0');
+  document.getElementById('esp-uptime').textContent = `${h}:${m}:${sc}`;
+
+  // Update Sparkline Suhu
+  tempHistory.push(temperature);
+  if(tempHistory.length > 20) tempHistory.shift();
+  drawSparkline();
+
+  // Tambah Baris ke Tabel Historis
+  tableData.unshift({ts: now.toLocaleString(), p: pressure.toFixed(2), t: temperature.toFixed(1), s: 'Online'});
+  if(tableData.length > 300) tableData.pop();
+  filterTable();
+}
+
+// ─── Table Functions ──────────────────────────────────────────────
+function filterTable(){
+  const q=document.getElementById('tbl-search').value.toLowerCase();
+  const d=document.getElementById('tbl-date').value;
+  filteredData=tableData.filter(r=>{
+    const matchQ=r.ts.toLowerCase().includes(q)||r.p.includes(q)||r.t.includes(q);
+    const matchD=!d||r.ts.includes(new Date(d).toLocaleDateString());
+    return matchQ&&matchD;
+  });
+  if(sortCol>=0){
+    const keys=['ts','p','t','s'];
+    filteredData.sort((a,b)=>{
+      const av=a[keys[sortCol]];const bv=b[keys[sortCol]];
+      return (isNaN(av)?av:+av)>(isNaN(bv)?bv:+bv)?sortDir:-sortDir;
+    });
+  }
+  page=0;renderTable();
+}
+
+function renderTable(){
+  const start=page*pageSize;const slice=filteredData.slice(start,start+pageSize);
+  const tbody=document.getElementById('tbl-body');
+  tbody.innerHTML=slice.map(r=>`<tr>
+    <td>${r.ts}</td><td class="val">${r.p}</td><td class="val">${r.t}</td>
+    <td><span class="status-ok">${r.s}</span></td>
+  </tr>`).join('');
+  const pages=Math.max(1,Math.ceil(filteredData.length/pageSize));
+  document.getElementById('page-info').textContent=`Page ${page+1} / ${pages}`;
+  document.getElementById('tbl-count').textContent=`${filteredData.length} rows`;
+}
+
+function sortTable(col){sortCol=col;sortDir*=-1;filterTable();}
+function prevPage(){if(page>0){page--;renderTable();}}
+function nextPage(){if((page+1)*pageSize<filteredData.length){page++;renderTable();}}
+
+function exportCSV(){
+  const hdr='Timestamp,Pressure (hPa),Temperature (°C),Status\n';
+  const rows=filteredData.map(r=>`"${r.ts}",${r.p},${r.t},${r.s}`).join('\n');
+  const blob=new Blob([hdr+rows],{type:'text/csv'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='BMP388_Telemetry_Data.csv';a.click();
+}
+
+// Clock Header
+setInterval(()=>{
+  document.getElementById('header-time').textContent = new Date().toTimeString().slice(0,8);
+}, 1000);
+
+// Karena alat TX mengirim data setiap 5 detik, web juga me-refresh grafiknya setiap 5 detik
+setInterval(updateUI, 5000);
+
+// ─── KONEKSI MQTT PUBLIK (HIVEMQ) ──────────────────────────────
+const mqttServer = "broker.hivemq.com";
+const mqttPort = 8884; // Port WSS khusus HiveMQ
+const clientId = "WebDashboard_" + Math.floor(Math.random() * 10000);
+
+const mqttClient = new Paho.MQTT.Client(mqttServer, mqttPort, clientId);
+
+mqttClient.onConnectionLost = function (responseObject) {
+  if (responseObject.errorCode !== 0) {
+    document.getElementById('conn-text').textContent = "Connection Lost";
+    document.getElementById('conn-text').style.color = "var(--red)";
+    document.getElementById('conn-dot').classList.add('offline');
+    document.getElementById('device-status').innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg> Disconnected`;
+    document.getElementById('device-status').style.color = "var(--red)";
+    document.getElementById('device-status').style.backgroundColor = "rgba(255,59,92,0.08)";
+    document.getElementById('device-status').style.borderColor = "rgba(255,59,92,0.2)";
+  }
+};
+
+mqttClient.onMessageArrived = function (message) {
+  const topic = message.destinationName;
+  const payload = message.payloadString;
+
+  // Pastikan nama topic sama persis dengan yang ada di kodingan RX
+  if (topic === "telemetri_elektro/tekanan") {
+    pressure = parseFloat(payload);
+    packets++; 
+  } else if (topic === "telemetri_elektro/suhu") {
+    temperature = parseFloat(payload);
+  } else if (topic === "telemetri_elektro/status") {
+    if(payload.includes("ALARM")) {
+      document.getElementById('device-status').innerHTML = `⚠️ ` + payload;
+      document.getElementById('device-status').style.color = "var(--red)";
+      document.getElementById('device-status').style.backgroundColor = "rgba(255,59,92,0.08)";
+    } else {
+      document.getElementById('device-status').innerHTML = `✓ Active`;
+      document.getElementById('device-status').style.color = "var(--green)";
+      document.getElementById('device-status').style.backgroundColor = "rgba(0,255,156,0.08)";
+    }
+  }
+};
+
+// Pengaturan koneksi TANPA password
+const options = {
+  useSSL: true, 
+  onSuccess: function() {
+    console.log("Sukses Terhubung ke Server HiveMQ!");
+    document.getElementById('conn-text').textContent = "Online";
+    document.getElementById('conn-text').style.color = "var(--green)";
+    document.getElementById('conn-dot').classList.remove('offline');
+    
+    // Subscribe ke topic baru
+    mqttClient.subscribe("telemetri_elektro/tekanan");
+    mqttClient.subscribe("telemetri_elektro/suhu");
+    mqttClient.subscribe("telemetri_elektro/status");
+  },
+  onFailure: function(e) {
+    console.log("Koneksi Gagal: ", e);
+    document.getElementById('conn-text').textContent = "Gagal Konek Server";
+    document.getElementById('conn-text').style.color = "var(--red)";
+  }
+};
+
+mqttClient.connect(options);
+</script>
+</body>
+</html>
